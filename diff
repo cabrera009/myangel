@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memorial Memories</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background: linear-gradient(135deg, #e0f7fa, #f3e5f5);
+            min-height: 100vh;
+            font-family: 'Arial', sans-serif;
+            color: #333;
+        }
+        .fade-in {
+            animation: fadeIn 1s ease-in;
+        }
+        @keyframes fadeIn {
+            0% { opacity: 0; transform: translateY(10px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+        .photo-card {
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .photo-card:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+        }
+        .slideshow-img {
+            max-height: 500px;
+            object-fit: cover;
+            border-radius: 8px;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal img {
+            max-width: 90%;
+            max-height: 90%;
+            border-radius: 8px;
+        }
+        .modal-close {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center p-4">
+    <!-- Audio Player -->
+    <audio id="bg-music" loop></audio>
+    <div id="music-controls" class="fixed bottom-4 right-4 flex items-center space-x-2 bg-white p-2 rounded-lg shadow-lg">
+        <select id="music-select" class="p-1 border rounded">
+            <option value="">No Music</option>
+            <option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3">Serene Piano</option>
+            <option value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3">Gentle Strings</option>
+        </select>
+        <button id="play-pause" class="bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600">Play</button>
+    </div>
+
+    <!-- View Mode -->
+    <div id="view-mode" class="w-full max-w-4xl text-center hidden">
+        <h1 id="memorial-title" class="text-4xl font-serif text-gray-800 mb-4 fade-in"></h1>
+        <p id="memorial-description" class="text-lg text-gray-600 mb-6 fade-in"></p>
+        <div id="slideshow" class="relative mb-6">
+            <img id="slideshow-img" src="" alt="Memorial Photo" class="mx-auto slideshow-img fade-in">
+            <button id="prev-slide" class="absolute left-2 top-1/2 transform -translate-y-1/2 bg-gray-800 text-white p-2 rounded-full hover:bg-gray-600">←</button>
+            <button id="next-slide" class="absolute right-2 top-1/2 transform -translate-y-1/2 bg-gray-800 text-white p-2 rounded-full hover:bg-gray-600">→</button>
+        </div>
+        <div id="photo-gallery" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4"></div>
+        <button id="edit-btn" class="mt-6 bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600">Edit Memorial</button>
+    </div>
+
+    <!-- Edit Mode -->
+    <div id="edit-mode" class="w-full max-w-4xl bg-white p-6 rounded-lg shadow-lg">
+        <h2 class="text-2xl font-serif text-gray-800 mb-4">Create Your Memorial</h2>
+        <div class="mb-4">
+            <label class="block text-gray-700 mb-1">Memorial Title</label>
+            <input id="edit-title" type="text" placeholder="In Memory of..." class="w-full p-2 border rounded">
+        </div>
+        <div class="mb-4">
+            <label class="block text-gray-700 mb-1">Description or Message</label>
+            <textarea id="edit-description" placeholder="A loving memory..." rows="4" class="w-full p-2 border rounded"></textarea>
+        </div>
+        <div class="mb-4">
+            <label class="block text-gray-700 mb-1">Upload Photos (Max 5)</label>
+            <input id="photo-upload" type="file" accept="image/*" multiple class="w-full p-2 border rounded">
+            <p id="upload-warning" class="text-red-500 text-sm hidden">Max 5 photos or file too large!</p>
+        </div>
+        <div id="preview-gallery" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-4"></div>
+        <button id="save-btn" class="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600">Save Memorial</button>
+        <button id="cancel-btn" class="ml-2 bg-gray-300 text-gray-800 px-6 py-2 rounded-lg hover:bg-gray-400">Cancel</button>
+    </div>
+
+    <!-- Image Modal -->
+    <div id="image-modal" class="modal">
+        <span class="modal-close">&times;</span>
+        <img id="modal-img" src="" alt="Full-size Photo">
+    </div>
+
+    <script>
+        // Get URL parameter for unique memorial ID
+        const urlParams = new URLSearchParams(window.location.search);
+        const memorialId = urlParams.get('id') || 'default';
+        const storageKey = `memorial_${memorialId}`;
+
+        // DOM elements
+        const viewMode = document.getElementById('view-mode');
+        const editMode = document.getElementById('edit-mode');
+        const memorialTitle = document.getElementById('memorial-title');
+        const memorialDescription = document.getElementById('memorial-description');
+        const slideshowImg = document.getElementById('slideshow-img');
+        const photoGallery = document.getElementById('photo-gallery');
+        const editTitle = document.getElementById('edit-title');
+        const editDescription = document.getElementById('edit-description');
+        const photoUpload = document.getElementById('photo-upload');
+        const previewGallery = document.getElementById('preview-gallery');
+        const saveBtn = document.getElementById('save-btn');
+        const cancelBtn = document.getElementById('cancel-btn');
+        const editBtn = document.getElementById('edit-btn');
+        const prevSlide = document.getElementById('prev-slide');
+        const nextSlide = document.getElementById('next-slide');
+        const musicSelect = document.getElementById('music-select');
+        const playPauseBtn = document.getElementById('play-pause');
+        const bgMusic = document.getElementById('bg-music');
+        const imageModal = document.getElementById('image-modal');
+        const modalImg = document.getElementById('modal-img');
+        const modalClose = document.querySelector('.modal-close');
+        const uploadWarning = document.getElementById('upload-warning');
+
+        // State
+        let memorialData = { title: '', description: '', images: [], music: '' };
+        let currentSlide = 0;
+        let isPlaying = false;
+
+        // Load memorial data
+        function loadMemorial() {
+            const savedData = localStorage.getItem(storageKey);
+            if (savedData) {
+                memorialData = JSON.parse(savedData);
+                renderViewMode();
+                viewMode.classList.remove('hidden');
+                editMode.classList.add('hidden');
+            } else {
+                editMode.classList.remove('hidden');
+                viewMode.classList.add('hidden');
+            }
+            updateMusic();
+        }
+
+        // Render view mode
+        function renderViewMode() {
+            memorialTitle.textContent = memorialData.title || 'In Loving Memory';
+            memorialDescription.textContent = memorialData.description || 'A place to cherish memories.';
+            photoGallery.innerHTML = '';
+            memorialData.images.forEach((img, index) => {
+                const div = document.createElement('div');
+                div.className = 'photo-card bg-white p-2 rounded-lg shadow-lg cursor-pointer';
+                div.innerHTML = `<img src="${img}" alt="Memory" class="w-full h-48 object-cover rounded">`;
+                div.addEventListener('click', () => showModal(img));
+                photoGallery.appendChild(div);
+            });
+            updateSlideshow();
+        }
+
+        // Update slideshow
+        function updateSlideshow() {
+            if (memorialData.images.length > 0) {
+                slideshowImg.src = memorialData.images[currentSlide];
+                slideshowImg.classList.remove('fade-in');
+                setTimeout(() => slideshowImg.classList.add('fade-in'), 10);
+            } else {
+                slideshowImg.src = 'https://via.placeholder.com/500?text=No+Photos';
+            }
+        }
+
+        // Show image modal
+        function showModal(src) {
+            modalImg.src = src;
+            imageModal.style.display = 'flex';
+        }
+
+        // Close modal
+        modalClose.addEventListener('click', () => {
+            imageModal.style.display = 'none';
+        });
+
+        // Slideshow navigation
+        prevSlide.addEventListener('click', () => {
+            if (memorialData.images.length > 0) {
+                currentSlide = (currentSlide - 1 + memorialData.images.length) % memorialData.images.length;
+                updateSlideshow();
+            }
+        });
+        nextSlide.addEventListener('click', () => {
+            if (memorialData.images.length > 0) {
+                currentSlide = (currentSlide + 1) % memorialData.images.length;
+                updateSlideshow();
+            }
+        });
+
+        // Handle photo uploads
+        photoUpload.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            if (files.length + memorialData.images.length > 5) {
+                uploadWarning.classList.remove('hidden');
+                return;
+            }
+            uploadWarning.classList.add('hidden');
+            files.forEach(file => {
+                if (file.size > 1 * 1024 * 1024) { // 1MB limit
+                    uploadWarning.classList.remove('hidden');
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    memorialData.images.push(event.target.result);
+                    renderPreview();
+                };
+                reader.readAsDataURL(file);
+            });
+        });
+
+        // Render preview gallery
+        function renderPreview() {
+            previewGallery.innerHTML = '';
+            memorialData.images.forEach((img, index) => {
+                const div = document.createElement('div');
+                div.className = 'photo-card bg-white p-2 rounded-lg shadow-lg';
+                div.innerHTML = `<img src="${img}" alt="Preview" class="w-full h-48 object-cover rounded">
+                                <button class="text-red-500 mt-1" data-index="${index}">Remove</button>`;
+                previewGallery.appendChild(div);
+                div.querySelector('button').addEventListener('click', () => {
+                    memorialData.images.splice(index, 1);
+                    renderPreview();
+                });
+            });
+        }
+
+        // Save memorial
+        saveBtn.addEventListener('click', () => {
+            memorialData.title = editTitle.value;
+            memorialData.description = editDescription.value;
+            memorialData.music = musicSelect.value;
+            localStorage.setItem(storageKey, JSON.stringify(memorialData));
+            renderViewMode();
+            viewMode.classList.remove('hidden');
+            editMode.classList.add('hidden');
+            updateMusic();
+        });
+
+        // Edit memorial
+        editBtn.addEventListener('click', () => {
+            editTitle.value = memorialData.title;
+            editDescription.value = memorialData.description;
+            musicSelect.value = memorialData.music;
+            renderPreview();
+            editMode.classList.remove('hidden');
+            viewMode.classList.add('hidden');
+        });
+
+        // Cancel edit
+        cancelBtn.addEventListener('click', () => {
+            loadMemorial();
+        });
+
+        // Music controls
+        musicSelect.addEventListener('change', updateMusic);
+        playPauseBtn.addEventListener('click', () => {
+            if (isPlaying) {
+                bgMusic.pause();
+                playPauseBtn.textContent = 'Play';
+            } else {
+                bgMusic.play().catch(() => alert('Please interact with the page first.'));
+                playPauseBtn.textContent = 'Pause';
+            }
+            isPlaying = !isPlaying;
+        });
+
+        function updateMusic() {
+            bgMusic.src = musicSelect.value;
+            if (musicSelect.value && isPlaying) {
+                bgMusic.play().catch(() => {});
+            } else {
+                bgMusic.pause();
+                isPlaying = false;
+                playPauseBtn.textContent = 'Play';
+            }
+        }
+
+        // Initialize
+        loadMemorial();
+    </script>
+</body>
+</html>
